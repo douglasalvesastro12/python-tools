@@ -97,3 +97,4 @@ def transit_difference(T0, T0err, T0ref, T0ref_err, P=0.7920520, Perr=0.0000093)
     return diff, diff_err
 #============================================================================================================
 # Checking git.123
+#testing
