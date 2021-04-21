@@ -85,7 +85,7 @@ def select_full_transits(Ti, Te, P, npoints, *data):
 #======================================================================================================
 def transit_difference(T0, T0err, T0ref, T0ref_err, P=0.7920520, Perr=0.0000093):
     '''Computes Difference between two T0 central transits. Negative values mean T0ref is ahead (larger) of T0'''
-    N = int(abs(T0 - T0ref) // P) #number of transits between T0 and T0ref
+    N = int(abs(T0 - T0ref) / P) #number of transits between T0 and T0ref
     if T0 > T0ref:
         diff = (T0 - (T0ref + N*P)) * 24 * 60 # Difference between T0s in minutes
         diff_err = (T0ref_err + T0err) * 24 * 60 #T0s errors are added to make T0 diff larger. diff_err = T0max - T0
