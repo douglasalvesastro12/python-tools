@@ -1,7 +1,15 @@
+
 #Compilation of several functions
 #=======================================================================
 def bin_data(t, flux, flux_err, step):
-    ''' Enter with t, flux and step for binning'''
+    '''
+    Data binning by mean. 
+    Parameters:
+    t: x axis
+    flux: y axis
+    step: size of bins
+    
+    '''
     #bin the data, t_binned contains the boarders of bins
     t_binned = np.arange(t.min(), t.max() + step, step) #endpoint not included
     binned_time = [] #time to be plotted against avr flux within a bin
