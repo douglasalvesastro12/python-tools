@@ -1,4 +1,5 @@
 import numpy as np
+import batman
 #Compilation of several functions
 #=======================================================================
 def bin_data(t, flux, flux_err, step, avrg='mean'):
@@ -60,7 +61,7 @@ def f_batman(x, t0,per,rp,a,inc,baseline=0.0, ecc=0,w=90,  u=[0.34, 0.28],limb_d
 def linear_ephemerides(T0, T0err, P, Perr, Tdur, Tdurerr, dt, time):
     '''
     Compute expected transit ingress and egress from entire given time
-    dt: add a fractional oot wings
+    dt: add a fractional oot wings. e.g, dt=0.2 means 20% of Tdur 
     Notice that it assumes continuous data, hence for ground-based some caught transits are empty
     '''
     init_time, end_time = time.min(), time.max()
@@ -71,6 +72,8 @@ def linear_ephemerides(T0, T0err, P, Perr, Tdur, Tdurerr, dt, time):
         print(f'Shifting T0 backwards {N[-1]} transits')
         T0 -= N[-1] * P
         assert int((T0 - init_time) / P) == 0
+        assert dt <= 1.0
+    dt *= Tdur
     N = np.arange( int((end_time - init_time) / P) )
     Ti = T0 + N*P - (N*Perr + T0err + 0.5 * Tdur + Tdurerr) - dt #Ti = Beginning of window
     Te = T0 + N*P + (N*Perr + T0err + 0.5 * Tdur + Tdurerr) + dt #Te (late) = End of transit window
