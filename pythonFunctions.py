@@ -1,5 +1,6 @@
 import numpy as np
 import batman
+import collections
 #Compilation of several functions
 #=======================================================================
 def bin_data(t, flux, flux_err, step, avrg='mean'):
@@ -80,30 +81,6 @@ def linear_ephemerides(T0, T0err, P, Perr, Tdur, Tdurerr, dt, time):
     
     return (Ti, Te)
 #====================================================================================================
-def select_full_transits(Ti, Te, P, npoints, *data):
-    '''
-    Select transits if there is npoints within transit Ti,Te window
-    '''
-    time, flux, flux_err = data
-    N = np.arange( int((time.max() - time.min())/P) )
-    t, f, ferr = {}, {}, {} 
-    
-    for ind in N:
-        cond = (time >= Ti[ind]) & (time <= Te[ind]) 
-        if len(time[cond]) > npoints: #make sure at least n datapoints are within the window 
-            t[f'transit {ind}'] = time[cond]
-            f[f'transit {ind}'] = flux[cond]
-            ferr[f'transit {ind}'] = flux_err[cond]
-        
-    #unfold each array within dicts to put it into arrays
-    transits_t, transits_f, transits_ferr = [], [], []
-    for i in t.keys():
-        for j,k,z in zip(t[f'{i}'], f[f'{i}'],ferr[f'{i}']):
-            transits_t.append(j), transits_f.append(k), transits_ferr.append(z)
-    
-        
-    return np.array(transits_t),np.array(transits_f),np.array(transits_ferr) 
-#======================================================================================================
 def transit_difference(T0, T0err, T0ref, T0ref_err, P=0.7920520, Perr=0.0000093):
     '''Computes Difference between two T0 central transits. Negative values mean T0ref is ahead (larger) of T0'''
     N = int(abs(T0 - T0ref) / P) #number of transits between T0 and T0ref
@@ -117,3 +94,74 @@ def transit_difference(T0, T0err, T0ref, T0ref_err, P=0.7920520, Perr=0.0000093)
         
     return diff, diff_err
 #============================================================================================================
+def select_full_transits(Ti, Te, P, npoints, Ntransits, random_transits, *data):
+    '''
+    Select all or a sample Ntransits of transits from LC for when npoints are within transit Ti,Te window.
+    Need implementation for when Ntransits > Total transit. Do not exceed this constraint! Make a better while
+    loop
+    Parameters:
+    Ti, Te: from linear_ephemerides function
+    P: Planet period [days]
+    npoints: Number of data points within transit windown
+    random_transits: if True returns random transits
+    Ntransits: Number of transits to get from LC. Nonsense if random_transit is False
+    data: t, f, ferr 
+    '''
+    time, flux, flux_err = data
+    N = np.arange( int((time.max() - time.min())/P) ) #total possible N values
+    t, f, ferr = {}, {}, {} #transits is stored here
+    N_counts = [] 
+    iterations = 0
+    if random_transits == True:
+        while len(N_counts) < Ntransits:
+            Nrand = np.random.choice(N) #pick transit number from all possible values 
+            cond = (time >= Ti[Nrand]) & (time <= Te[Nrand])
+            if len(time[cond]) == 0: # if data is discontinuous there may be no data for a given N then
+                Nrand = np.random.choice(N) #pick a new N
+                iterations +=1
+            else:
+                if len(time[cond]) >= npoints: #Check there's enough data points within transit windown (Ti, Te)
+                    if len(N_counts) != 0:#Do not allow same transit windown to be picked 
+                        if Nrand not in N_counts:
+                            N_counts.append(Nrand)
+                            t[f'transit {Nrand}'] = time[cond]
+                            f[f'transit {Nrand}'] = flux[cond]
+                            ferr[f'transit {Nrand}'] = flux_err[cond]
+                        else:
+                            Nrand = np.random.choice(N)
+                            
+                    else:#1st picked transit will be added here
+                        N_counts.append(Nrand)
+                        t[f'transit {Nrand}'] = time[cond]
+                        f[f'transit {Nrand}'] = flux[cond]
+                        ferr[f'transit {Nrand}'] = flux_err[cond]
+                        Nrand = np.random.choice(N)
+
+                else:# If 
+                    Nrand = np.random.choice(N)
+                    iterations +=1
+                    if iterations== 1e4:
+                        print(f'while loop iterations exceeded: value {iterations}. Investigate!')
+                        print('Hints: No transits meet npoints criterium or Ntransits >>> Total N transits from data')
+                        break
+                
+    else:        
+        for ind in N:
+            cond = (time >= Ti[ind]) & (time <= Te[ind]) 
+            if len(time[cond]) > npoints: #make sure at least n datapoints are within the window 
+                t[f'transit {ind}'] = time[cond]
+                f[f'transit {ind}'] = flux[cond]
+                ferr[f'transit {ind}'] = flux_err[cond]
+        
+    #unfold each array within dicts to put it into arrays
+    transits_t, transits_f, transits_ferr = [], [], []
+    #sort t dictionary
+#    t = collections.OrderedDict(sorted(t.items())) 
+
+    for i in sorted(N_counts): #sort time to return sorted transits
+        i = 'transit ' + str(i)
+        for j,k,z in zip(t[f'{i}'], f[f'{i}'],ferr[f'{i}']):
+            transits_t.append(j), transits_f.append(k), transits_ferr.append(z)
+    
+    return np.array(transits_t),np.array(transits_f),np.array(transits_ferr)
+#===================================================================================================================================
