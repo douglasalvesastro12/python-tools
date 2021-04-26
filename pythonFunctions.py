@@ -1,9 +1,9 @@
-
+import numpy as np
 #Compilation of several functions
 #=======================================================================
-def bin_data(t, flux, flux_err, step):
+def bin_data(t, flux, flux_err, step, avrg='mean'):
     '''
-    Data binning by mean. 
+    Data binning by mean otherwise median. 
     Parameters:
     t: x axis
     flux: y axis
@@ -18,10 +18,10 @@ def bin_data(t, flux, flux_err, step):
     for i in range(len(t_binned) -1):
         cond = (t >= t_binned[i]) & (t < t_binned[i+1])
         if len(flux[cond]) > 1:
-            binned_time.append(t[cond].mean())
-            binned_flux.append(np.mean(flux[cond]))
-            binned_flux_err.append(np.sqrt((flux_err[cond]**2).mean()))
-#             binned_flux_err.append(np.sqrt(np.var(flux[cond])/len(flux[cond]))) #photon noise
+            binned_time.append(t[cond].mean() if avrg == 'mean' else np.median(t[cond]))
+            binned_flux.append(np.mean(flux[cond]) if avrg == 'mean' else np.median(flux[cond]))
+#            binned_flux_err.append(np.sqrt((flux_err[cond]**2).mean()))
+            binned_flux_err.append(np.sqrt(np.var(flux[cond])/len(flux[cond]))) #photon noise
         elif len(flux[cond]) == 1: #if one datapoint, that value is taken
             binned_time.append(t[cond][0]) #t[cond] returns an array with 1 element [0] gets the element
             binned_flux.append(flux[cond][0])
@@ -57,13 +57,23 @@ def f_batman(x, t0,per,rp,a,inc,baseline=0.0, ecc=0,w=90,  u=[0.34, 0.28],limb_d
     flux_m = m.light_curve(params)          #calculates light curve
     return np.array(flux_m)+baseline
 #====================================================================================================
-def linear_ephemeris(T0, T0err, P, Perr, Tdur, Tdurerr, Ntransits):
+def linear_ephemerides(T0, T0err, P, Perr, Tdur, Tdurerr, dt, time):
     '''
-    Compute expected transit egress and ingress 
+    Compute expected transit ingress and egress from entire given time
+    dt: add a fractional oot wings
+    Notice that it assumes continuous data, hence for ground-based some caught transits are empty
     '''
-    N = np.arange(Ntransits)
-    Ti = T0 + N*P - (N*Perr + T0err + 0.5 * Tdur + Tdurerr) #Ti = Ingress
-    Te = T0 + N*P + (N*Perr + T0err + 0.5 * Tdur + Tdurerr) #Te = Egress
+    init_time, end_time = time.min(), time.max()
+
+    # Check if T0 is the 1st transit. If not shift T0 N transits backwards 
+    N = np.arange( int((T0 - init_time) / P) ) + 1 # arange stars with N = 0 which translate to no shift 
+    if len(N) > 0:
+        print(f'Shifting T0 backwards {N[-1]} transits')
+        T0 -= N[-1] * P
+        assert int((T0 - init_time) / P) == 0
+    N = np.arange( int((end_time - init_time) / P) )
+    Ti = T0 + N*P - (N*Perr + T0err + 0.5 * Tdur + Tdurerr) - dt #Ti = Beginning of window
+    Te = T0 + N*P + (N*Perr + T0err + 0.5 * Tdur + Tdurerr) + dt #Te (late) = End of transit window
     
     return (Ti, Te)
 #====================================================================================================
