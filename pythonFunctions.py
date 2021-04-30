@@ -165,3 +165,29 @@ def select_full_transits(Ti, Te, P, npoints, Ntransits, random_transits, *data):
     
     return np.array(transits_t),np.array(transits_f),np.array(transits_ferr)
 #===================================================================================================================================
+def draw_lc(time,cadence, *pars, plot=True):
+    '''
+    Draw a sample LC from a normal distribution with mean = model, sdv = sigma.
+    Parameters:
+    time: initial and final time. Array-like. Cadence defines the time domain. 
+    Cadence: in minutes  
+    '''
+    cadence /= (60 * 24)
+    time = np.arange(time[0], time[-1], cadence)
+    sigma, t0, per, rp, a, inc, bl, ecc, w = pars
+    model = f_batman(time, t0, per, rp, a, inc)
+    
+    flux, flux_err = np.random.normal(loc=model, scale = sigma), np.array([sigma] * model.size)
+    if plot:
+        #Plot mock data to vizualization
+        fig, ax = plt.subplots(1,1)
+
+        ax.errorbar(time, flux, flux_err, fmt = 'k.', alpha = 0.1, label = 'mock data')
+        ax.plot(time, model, 'r--')
+        ax.set_xlabel('Time [days]')
+        ax.set_ylabel('Rel. Flux')
+        ax.set_title(f'True pars: t0, per, rp, a, inc, bl, ecc, w  = {t0, per, rp, a, inc, bl, ecc, w }')
+        plt.legend()
+    
+    return time, flux, flux_err
+#======================================================================================================================
