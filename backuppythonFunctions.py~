@@ -68,14 +68,15 @@ def linear_ephemerides(T0, T0err, P, Perr, Tdur, Tdurerr, dt, time):
     init_time, end_time = time.min(), time.max()
 
     # Check if T0 is the 1st transit. If not shift T0 N transits backwards 
-    N = np.arange( int((T0 - init_time) / P) ) + 1 # arange stars with N = 0 which translate to no shift 
-    if len(N) > 0:
-        print(f'Shifting T0 backwards {N[-1]} transits')
-        T0 -= N[-1] * P
-        assert int((T0 - init_time) / P) == 0
-        assert dt <= 1.0
+    N_init = int((T0 - init_time) / P) 
+    if N_init != 0:
+        print(f'Shifting T0 backwards {N_init} transits')
+        T0 -= N_init * P
+    #Sanity checks
+    assert int((T0 - init_time) / P) == 0
+    
     dt *= Tdur
-    N = np.arange( int((end_time - init_time) / P) )
+    N = np.arange( int((end_time - init_time) / P) + 1) #arange doesnt include last point stop) added +1. Epochs from 1st transit
     Ti = T0 + N*P - (N*Perr + T0err + 0.5 * Tdur + Tdurerr) - dt #Ti = Beginning of window
     Te = T0 + N*P + (N*Perr + T0err + 0.5 * Tdur + Tdurerr) + dt #Te (late) = End of transit window
     
@@ -108,7 +109,7 @@ def select_full_transits(Ti, Te, P, npoints, Ntransits, random_transits, *data):
     data: t, f, ferr 
     '''
     time, flux, flux_err = data
-    N = np.arange( int((time.max() - time.min())/P) ) #total possible N values
+    N = np.arange( int((time.max() - time.min())/P) + 1) #total possible N values
     t, f, ferr = {}, {}, {} #transits is stored here
     N_counts = [] 
     iterations = 0
@@ -145,7 +146,7 @@ def select_full_transits(Ti, Te, P, npoints, Ntransits, random_transits, *data):
                         print('Hints: No transits meet npoints criterium or Ntransits >>> Total N transits from data')
                         break
                 
-    else:        
+    else:
         for ind in N:
             cond = (time >= Ti[ind]) & (time <= Te[ind]) 
             if len(time[cond]) > npoints: #make sure at least n datapoints are within the window 
@@ -156,12 +157,38 @@ def select_full_transits(Ti, Te, P, npoints, Ntransits, random_transits, *data):
     #unfold each array within dicts to put it into arrays
     transits_t, transits_f, transits_ferr = [], [], []
     #sort t dictionary
-#    t = collections.OrderedDict(sorted(t.items())) 
-
-    for i in sorted(N_counts): #sort time to return sorted transits
+#    t = collections.OrderedDict(sorted(t.items()))
+    #sort time to return sorted transits
+    for i in sorted( N_counts if random_transits else N ): #N_counts if random_transits, if not N is used for catching all dips
         i = 'transit ' + str(i)
         for j,k,z in zip(t[f'{i}'], f[f'{i}'],ferr[f'{i}']):
             transits_t.append(j), transits_f.append(k), transits_ferr.append(z)
-    
+
     return np.array(transits_t),np.array(transits_f),np.array(transits_ferr)
 #===================================================================================================================================
+def draw_lc(time,cadence, *pars, plot=True):
+    '''
+    Draw a sample LC from a normal distribution with mean = model, sdv = sigma.
+    Parameters:
+    time: initial and final time. Array-like. Cadence defines the time domain. 
+    Cadence: in minutes  
+    '''
+    cadence /= (60 * 24)
+    time = np.arange(time[0], time[-1], cadence)
+    sigma, t0, per, rp, a, inc, bl, ecc, w = pars
+    model = f_batman(time, t0, per, rp, a, inc)
+    
+    flux, flux_err = np.random.normal(loc=model, scale = sigma), np.array([sigma] * model.size)
+    if plot:
+        #Plot mock data to vizualization
+        fig, ax = plt.subplots(1,1)
+
+        ax.errorbar(time, flux, flux_err, fmt = 'k.', alpha = 0.1, label = 'mock data')
+        ax.plot(time, model, 'r--')
+        ax.set_xlabel('Time [days]')
+        ax.set_ylabel('Rel. Flux')
+        ax.set_title(f'True pars: t0, per, rp, a, inc, bl, ecc, w  = {t0, per, rp, a, inc, bl, ecc, w }')
+        plt.legend()
+    
+    return time, flux, flux_err
+#======================================================================================================================
