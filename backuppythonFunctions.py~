@@ -1,4 +1,6 @@
-
+import numpy as np
+import batman
+import collections
 #Compilation of several functions
 #=======================================================================
 def bin_data(t, flux, flux_err, step, avrg='mean'):
@@ -57,40 +59,29 @@ def f_batman(x, t0,per,rp,a,inc,baseline=0.0, ecc=0,w=90,  u=[0.34, 0.28],limb_d
     flux_m = m.light_curve(params)          #calculates light curve
     return np.array(flux_m)+baseline
 #====================================================================================================
-def linear_ephemeris(T0, T0err, P, Perr, Tdur, Tdurerr, Ntransits):
+def linear_ephemerides(T0, T0err, P, Perr, Tdur, Tdurerr, dt, time):
     '''
-    Compute expected transit egress and ingress 
+    Compute expected transit ingress and egress from entire given time
+    dt: add a fractional oot wings. e.g, dt=0.2 means 20% of Tdur 
+    Notice that it assumes continuous data, hence for ground-based some caught transits are empty
     '''
-    N = np.arange(Ntransits)
-    Ti = T0 + N*P - (N*Perr + T0err + 0.5 * Tdur + Tdurerr) #Ti = Ingress
-    Te = T0 + N*P + (N*Perr + T0err + 0.5 * Tdur + Tdurerr) #Te = Egress
+    init_time, end_time = time.min(), time.max()
+
+    # Check if T0 is the 1st transit. If not shift T0 N transits backwards 
+    N_init = int((T0 - init_time) / P) 
+    if N_init != 0:
+        print(f'Shifting T0 backwards {N_init} transits')
+        T0 -= N_init * P
+    #Sanity checks
+    assert int((T0 - init_time) / P) == 0
+    
+    dt *= Tdur
+    N = np.arange( int((end_time - init_time) / P) + 1) #arange doesnt include last point stop) added +1. Epochs from 1st transit
+    Ti = T0 + N*P - (N*Perr + T0err + 0.5 * Tdur + Tdurerr) - dt #Ti = Beginning of window
+    Te = T0 + N*P + (N*Perr + T0err + 0.5 * Tdur + Tdurerr) + dt #Te (late) = End of transit window
     
     return (Ti, Te)
 #====================================================================================================
-def select_full_transits(Ti, Te, P, npoints, *data):
-    '''
-    Select transits if there is npoints within transit Ti,Te window
-    '''
-    time, flux, flux_err = data
-    N = np.arange( int((time.max() - time.min())/P) )
-    t, f, ferr = {}, {}, {} 
-    
-    for ind in N:
-        cond = (time >= Ti[ind]) & (time <= Te[ind]) 
-        if len(time[cond]) > npoints: #make sure at least n datapoints are within the window 
-            t[f'transit {ind}'] = time[cond]
-            f[f'transit {ind}'] = flux[cond]
-            ferr[f'transit {ind}'] = flux_err[cond]
-        
-    #unfold each array within dicts to put it into arrays
-    transits_t, transits_f, transits_ferr = [], [], []
-    for i in t.keys():
-        for j,k,z in zip(t[f'{i}'], f[f'{i}'],ferr[f'{i}']):
-            transits_t.append(j), transits_f.append(k), transits_ferr.append(z)
-    
-        
-    return np.array(transits_t),np.array(transits_f),np.array(transits_ferr) 
-#======================================================================================================
 def transit_difference(T0, T0err, T0ref, T0ref_err, P=0.7920520, Perr=0.0000093):
     '''Computes Difference between two T0 central transits. Negative values mean T0ref is ahead (larger) of T0'''
     N = int(abs(T0 - T0ref) / P) #number of transits between T0 and T0ref
@@ -104,3 +95,100 @@ def transit_difference(T0, T0err, T0ref, T0ref_err, P=0.7920520, Perr=0.0000093)
         
     return diff, diff_err
 #============================================================================================================
+def select_full_transits(Ti, Te, P, npoints, Ntransits, random_transits, *data):
+    '''
+    Select all or a sample Ntransits of transits from LC for when npoints are within transit Ti,Te window.
+    Need implementation for when Ntransits > Total transit. Do not exceed this constraint! Make a better while
+    loop
+    Parameters:
+    Ti, Te: from linear_ephemerides function
+    P: Planet period [days]
+    npoints: Number of data points within transit windown
+    random_transits: if True returns random transits
+    Ntransits: Number of transits to get from LC. Nonsense if random_transit is False
+    data: t, f, ferr 
+    '''
+    time, flux, flux_err = data
+    N = np.arange( int((time.max() - time.min())/P) + 1) #total possible N values
+    t, f, ferr = {}, {}, {} #transits is stored here
+    N_counts = [] 
+    iterations = 0
+    if random_transits == True:
+        while len(N_counts) < Ntransits:
+            Nrand = np.random.choice(N) #pick transit number from all possible values 
+            cond = (time >= Ti[Nrand]) & (time <= Te[Nrand])
+            if len(time[cond]) == 0: # if data is discontinuous there may be no data for a given N then
+                Nrand = np.random.choice(N) #pick a new N
+                iterations +=1
+            else:
+                if len(time[cond]) >= npoints: #Check there's enough data points within transit windown (Ti, Te)
+                    if len(N_counts) != 0:#Do not allow same transit windown to be picked 
+                        if Nrand not in N_counts:
+                            N_counts.append(Nrand)
+                            t[f'transit {Nrand}'] = time[cond]
+                            f[f'transit {Nrand}'] = flux[cond]
+                            ferr[f'transit {Nrand}'] = flux_err[cond]
+                        else:
+                            Nrand = np.random.choice(N)
+                            
+                    else:#1st picked transit will be added here
+                        N_counts.append(Nrand)
+                        t[f'transit {Nrand}'] = time[cond]
+                        f[f'transit {Nrand}'] = flux[cond]
+                        ferr[f'transit {Nrand}'] = flux_err[cond]
+                        Nrand = np.random.choice(N)
+
+                else:# If 
+                    Nrand = np.random.choice(N)
+                    iterations +=1
+                    if iterations== 1e4:
+                        print(f'while loop iterations exceeded: value {iterations}. Investigate!')
+                        print('Hints: No transits meet npoints criterium or Ntransits >>> Total N transits from data')
+                        break
+                
+    else:
+        for ind in N:
+            cond = (time >= Ti[ind]) & (time <= Te[ind]) 
+            if len(time[cond]) > npoints: #make sure at least n datapoints are within the window 
+                t[f'transit {ind}'] = time[cond]
+                f[f'transit {ind}'] = flux[cond]
+                ferr[f'transit {ind}'] = flux_err[cond]
+        
+    #unfold each array within dicts to put it into arrays
+    transits_t, transits_f, transits_ferr = [], [], []
+    #sort t dictionary
+#    t = collections.OrderedDict(sorted(t.items()))
+    #sort time to return sorted transits
+    for i in sorted( N_counts if random_transits else N ): #N_counts if random_transits, if not N is used for catching all dips
+        i = 'transit ' + str(i)
+        for j,k,z in zip(t[f'{i}'], f[f'{i}'],ferr[f'{i}']):
+            transits_t.append(j), transits_f.append(k), transits_ferr.append(z)
+
+    return np.array(transits_t),np.array(transits_f),np.array(transits_ferr)
+#===================================================================================================================================
+def draw_lc(time,cadence, *pars, plot=True):
+    '''
+    Draw a sample LC from a normal distribution with mean = model, sdv = sigma.
+    Parameters:
+    time: initial and final time. Array-like. Cadence defines the time domain. 
+    Cadence: in minutes  
+    '''
+    cadence /= (60 * 24)
+    time = np.arange(time[0], time[-1], cadence)
+    sigma, t0, per, rp, a, inc, bl, ecc, w = pars
+    model = f_batman(time, t0, per, rp, a, inc)
+    
+    flux, flux_err = np.random.normal(loc=model, scale = sigma), np.array([sigma] * model.size)
+    if plot:
+        #Plot mock data to vizualization
+        fig, ax = plt.subplots(1,1)
+
+        ax.errorbar(time, flux, flux_err, fmt = 'k.', alpha = 0.1, label = 'mock data')
+        ax.plot(time, model, 'r--')
+        ax.set_xlabel('Time [days]')
+        ax.set_ylabel('Rel. Flux')
+        ax.set_title(f'True pars: t0, per, rp, a, inc, bl, ecc, w  = {t0, per, rp, a, inc, bl, ecc, w }')
+        plt.legend()
+    
+    return time, flux, flux_err
+#======================================================================================================================
