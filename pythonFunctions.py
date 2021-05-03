@@ -109,7 +109,7 @@ def select_full_transits(Ti, Te, P, npoints, Ntransits, random_transits, *data):
     data: t, f, ferr 
     '''
     time, flux, flux_err = data
-    N = np.arange( int((time.max() - time.min())/P) + 1) #total possible N values
+    N = np.arange( int((time.max() - time.min())/P)  + 1) #total possible N values
     t, f, ferr = {}, {}, {} #transits is stored here
     N_counts = [] 
     iterations = 0
@@ -147,13 +147,17 @@ def select_full_transits(Ti, Te, P, npoints, Ntransits, random_transits, *data):
                         break
                 
     else:
+        N_delete = [] # if empty space in data or npoints is not met else is triggered. Delete indexes
         for ind in N:
-            cond = (time >= Ti[ind]) & (time <= Te[ind]) 
-            if len(time[cond]) > npoints: #make sure at least n datapoints are within the window 
+            cond = (time >= Ti[ind]) & (time <= Te[ind])
+            if (len(time[cond]) > npoints) & (len(time[cond]) != 0.): #make sure at least n datapoints are within the window 
                 t[f'transit {ind}'] = time[cond]
                 f[f'transit {ind}'] = flux[cond]
                 ferr[f'transit {ind}'] = flux_err[cond]
-        
+            else:
+                N_delete.append(ind)
+    
+    N = np.delete(N, N_delete)
     #unfold each array within dicts to put it into arrays
     transits_t, transits_f, transits_ferr = [], [], []
     #sort t dictionary
@@ -164,7 +168,7 @@ def select_full_transits(Ti, Te, P, npoints, Ntransits, random_transits, *data):
         for j,k,z in zip(t[f'{i}'], f[f'{i}'],ferr[f'{i}']):
             transits_t.append(j), transits_f.append(k), transits_ferr.append(z)
 
-    return np.array(transits_t),np.array(transits_f),np.array(transits_ferr)
+    return np.array(transits_t),np.array(transits_f),np.array(transits_ferr), N
 #===================================================================================================================================
 def draw_lc(time,cadence, *pars, plot=True):
     '''
