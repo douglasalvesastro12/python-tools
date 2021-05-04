@@ -170,7 +170,7 @@ def select_full_transits(Ti, Te, P, npoints, Ntransits, random_transits, *data):
 
     return np.array(transits_t),np.array(transits_f),np.array(transits_ferr), N
 #===================================================================================================================================
-def draw_lc(time,cadence, *pars, plot=True):
+def draw_lc(time,cadence, sigma, pars, plot=True):
     '''
     Draw a sample LC from a normal distribution with mean = model, sdv = sigma.
     Parameters:
@@ -179,19 +179,19 @@ def draw_lc(time,cadence, *pars, plot=True):
     '''
     cadence /= (60 * 24)
     time = np.arange(time[0], time[-1], cadence)
-    sigma, t0, per, rp, a, inc, bl, ecc, w = pars
-    model = f_batman(time, t0, per, rp, a, inc)
+    model = f_batman(time, *pars)
     
     flux, flux_err = np.random.normal(loc=model, scale = sigma), np.array([sigma] * model.size)
+#     import pdb; pdb.set_trace()
     if plot:
         #Plot mock data to vizualization
-        fig, ax = plt.subplots(1,1)
+        fig, ax = plt.subplots(1,1, figsize = (12,7))
 
         ax.errorbar(time, flux, flux_err, fmt = 'k.', alpha = 0.1, label = 'mock data')
-        ax.plot(time, model, 'r--')
+        ax.plot(time, model, 'r--', label = 'mock data model')
         ax.set_xlabel('Time [days]')
         ax.set_ylabel('Rel. Flux')
-        ax.set_title(f'True pars: t0, per, rp, a, inc, bl, ecc, w  = {t0, per, rp, a, inc, bl, ecc, w }')
+        ax.set_title(f'True pars: t0:{t0:.4f}, per:{per:.4f}, rp:{rp:.4f}, a:{a:.4f}, inc:{inc:.4f}, bl:{bl:.7f}, ecc:{ecc:.4f}, w:{w:.4f}, [u1, u2]: {u1, u2}')
         plt.legend()
     
     return time, flux, flux_err
