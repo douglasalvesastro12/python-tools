@@ -1,6 +1,7 @@
 import numpy as np
 import batman
 import collections
+import matplotlib.pyplot as plt
 #Compilation of several functions
 #=======================================================================
 def bin_data(t, flux, flux_err, step, avrg='mean'):
@@ -39,7 +40,7 @@ def phase_fold(epoch, period, time):
     
     return phase
 #==========================================================================================
-def f_batman(x, t0,per,rp,a,inc,baseline=0.0, ecc=0,w=90,  u=[0.34, 0.28],limb_dark ="quadratic"):
+def f_batman(x, t0,per,rp,a,inc,baseline=0.0, ecc=0,w=90,  u1=0.34,u2= 0.28,limb_dark ="quadratic"):
     """
     Function for computing transit models for the set of 8 free paramters
     x - time array
@@ -51,8 +52,8 @@ def f_batman(x, t0,per,rp,a,inc,baseline=0.0, ecc=0,w=90,  u=[0.34, 0.28],limb_d
     params.a = a                      #semi-major axis (in units of stellar radii)
     params.inc = inc                     #orbital inclination (in degrees)
     params.ecc = ecc                     #eccentricity
-    params.w = w                       #longitude of periastron (in degrees)
-    params.u = u                #limb darkening coefficients [u1, u2]
+    params.w = 90                       #longitude of periastron (in degrees)
+    params.u = [u1, u2]                #limb darkening coefficients [u1, u2]
     params.limb_dark = limb_dark       #limb darkening model
 
     m = batman.TransitModel(params, x)    #initializes model
@@ -95,7 +96,7 @@ def transit_difference(T0, T0err, T0ref, T0ref_err, P=0.7920520, Perr=0.0000093)
         
     return diff, diff_err
 #============================================================================================================
-def select_full_transits(Ti, Te, P, npoints, Ntransits, random_transits, *data):
+def select_full_transits(Ti, Te, P, npoints, Ntransits, random_transits, *data, plot=True):
     '''
     Select all or a sample Ntransits of transits from LC for when npoints are within transit Ti,Te window.
     Need implementation for when Ntransits > Total transit. Do not exceed this constraint! Make a better while
@@ -157,7 +158,7 @@ def select_full_transits(Ti, Te, P, npoints, Ntransits, random_transits, *data):
             else:
                 N_delete.append(ind)
     
-    N = np.delete(N, N_delete)
+        N = np.delete(N, N_delete)
     #unfold each array within dicts to put it into arrays
     transits_t, transits_f, transits_ferr = [], [], []
     #sort t dictionary
@@ -167,6 +168,17 @@ def select_full_transits(Ti, Te, P, npoints, Ntransits, random_transits, *data):
         i = 'transit ' + str(i)
         for j,k,z in zip(t[f'{i}'], f[f'{i}'],ferr[f'{i}']):
             transits_t.append(j), transits_f.append(k), transits_ferr.append(z)
+            
+    if plot:
+        N_ = (N_counts if random_transits else N)
+        fig, ax = plt.subplots(len(N_),1, figsize = (6,len(N_)*2))
+        for idx, ind in enumerate(N_): #do look in N_counts or N depending on random_transit value
+            
+            ax[idx].errorbar(t[f'transit {ind}'], f[f'transit {ind}'], ferr[f'transit {ind}'], fmt='g.', label = f'Transit {idx}')
+            ax[idx].legend(loc='best')
+        ax[-1].set_xlabel('t0 [days]')
+        plt.tight_layout()
+        
 
     return np.array(transits_t),np.array(transits_f),np.array(transits_ferr), N
 #===================================================================================================================================
@@ -182,10 +194,8 @@ def draw_lc(time,cadence, sigma, pars, plot=True):
     model = f_batman(time, *pars)
     
     flux, flux_err = np.random.normal(loc=model, scale = sigma), np.array([sigma] * model.size)
-#     import pdb; pdb.set_trace()
     if plot:
-        #Plot mock data to vizualization
-        fig, ax = plt.subplots(1,1, figsize = (12,7))
+        fig, ax = plt.subplots(1,1, figsize = (9,6))
 
         ax.errorbar(time, flux, flux_err, fmt = 'k.', alpha = 0.1, label = 'mock data')
         ax.plot(time, model, 'r--', label = 'mock data model')
@@ -210,4 +220,13 @@ def transit_dur(per,rp,a,inc):
     #
     
     return tdur
+#=====================================================================================================================
+def get_transit(Ti, Te, time, flux, flux_err):
+    '''
+    Pick individual transits from data within windown Ti (time of ingress) and Te (time of egress)
+    '''
+    
+    cond = (time > Ti) & (time < Te)
+    
+    return time[cond], flux[cond], flux_err[cond] 
 #=====================================================================================================================
