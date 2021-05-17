@@ -2,6 +2,10 @@ import numpy as np
 import batman
 import collections
 import matplotlib.pyplot as plt
+import emcee
+from multiprocessing import Pool
+#from IPython.display import display, Math
+import corner
 #Compilation of several functions
 #=======================================================================
 def bin_data(t, flux, flux_err, step, avrg='mean'):
@@ -40,7 +44,7 @@ def phase_fold(epoch, period, time):
     
     return phase
 #==========================================================================================
-def f_batman(x, t0,per,rp,a,inc,baseline=0.0, ecc=0,w=90,  u1=0.34,u2= 0.28],limb_dark ="quadratic"):
+def f_batman(x, t0,per,rp,a,inc,baseline=0.0, ecc=0.1,w=90, u = [0.34, 0.28] ,limb_dark ="quadratic"):
     """
     Function for computing transit models for the set of 8 free paramters
     x - time array
@@ -52,8 +56,8 @@ def f_batman(x, t0,per,rp,a,inc,baseline=0.0, ecc=0,w=90,  u1=0.34,u2= 0.28],lim
     params.a = a                      #semi-major axis (in units of stellar radii)
     params.inc = inc                     #orbital inclination (in degrees)
     params.ecc = ecc                     #eccentricity
-    params.w = 90                       #longitude of periastron (in degrees)
-    params.u = [u1, u2]                #limb darkening coefficients [u1, u2]
+    params.w = w                       #longitude of periastron (in degrees)
+    params.u = u               #limb darkening coefficients [u1, u2]
     params.limb_dark = limb_dark       #limb darkening model
 
     m = batman.TransitModel(params, x)    #initializes model
@@ -116,6 +120,11 @@ def select_full_transits(Ti, Te, P, npoints, Ntransits, random_transits, *data, 
     iterations = 0
     if random_transits == True:
         while len(N_counts) < Ntransits:
+            if Ntransits > len(N):
+                print('Ntransits to catch larger than total N transits in data')
+                print(f'Total N transits from data: {len(N)}')
+                break
+                
             Nrand = np.random.choice(N) #pick transit number from all possible values 
             cond = (time >= Ti[Nrand]) & (time <= Te[Nrand])
             if len(time[cond]) == 0: # if data is discontinuous there may be no data for a given N then
@@ -159,6 +168,7 @@ def select_full_transits(Ti, Te, P, npoints, Ntransits, random_transits, *data, 
                 N_delete.append(ind)
     
         N = np.delete(N, N_delete)
+    
     #unfold each array within dicts to put it into arrays
     transits_t, transits_f, transits_ferr = [], [], []
     #sort t dictionary
@@ -169,18 +179,24 @@ def select_full_transits(Ti, Te, P, npoints, Ntransits, random_transits, *data, 
         for j,k,z in zip(t[f'{i}'], f[f'{i}'],ferr[f'{i}']):
             transits_t.append(j), transits_f.append(k), transits_ferr.append(z)
             
+    N_ = (N_counts if random_transits else N)
     if plot:
-        N_ = (N_counts if random_transits else N)
         fig, ax = plt.subplots(len(N_),1, figsize = (6,len(N_)*2))
         for idx, ind in enumerate(N_): #do look in N_counts or N depending on random_transit value
-            
-            ax[idx].errorbar(t[f'transit {ind}'], f[f'transit {ind}'], ferr[f'transit {ind}'], fmt='g.', label = f'Transit {idx}')
-            ax[idx].legend(loc='best')
-        ax[-1].set_xlabel('t0 [days]')
+            if len(N_) != 1:
+                ax[idx].errorbar(t[f'transit {ind}'], f[f'transit {ind}'], ferr[f'transit {ind}'], fmt='g.', label = f'Transit {ind}')
+                ax[idx].legend(loc='best')
+            else:
+                ax.errorbar(t[f'transit {ind}'], f[f'transit {ind}'], ferr[f'transit {ind}'], fmt='g.', label = f'Transit {ind}')
+                ax.legend(loc='best')
+        if len(N_) != 1:
+            ax[-1].set_xlabel('t0 [days]')
+        else:
+            ax.set_xlabel('t0 [days]')
         plt.tight_layout()
         
 
-    return np.array(transits_t),np.array(transits_f),np.array(transits_ferr), N
+    return np.array(transits_t),np.array(transits_f),np.array(transits_ferr), N_
 #===================================================================================================================================
 def draw_lc(time,cadence, sigma, pars, plot=True):
     '''
@@ -201,7 +217,8 @@ def draw_lc(time,cadence, sigma, pars, plot=True):
         ax.plot(time, model, 'r--', label = 'mock data model')
         ax.set_xlabel('Time [days]')
         ax.set_ylabel('Rel. Flux')
-        ax.set_title(f'True pars: t0:{t0:.4f}, per:{per:.4f}, rp:{rp:.4f}, a:{a:.4f}, inc:{inc:.4f}, bl:{bl:.7f}, ecc:{ecc:.4f}, w:{w:.4f}, [u1, u2]: {u1, u2}')
+        ax.set_title(f'True pars: t0:{pars[0]:.4f}, per:{pars[1]:.4f}, rp:{pars[2]:.4f}, a:{pars[3]:.4f}, inc:{pars[4]:.4f}, bl:{pars[5]:.7f}')
+        #, ecc:{ecc:.4f}, w:{w:.4f}, [u1, u2]: {u1, u2}')
         plt.legend()
     
     return time, flux, flux_err
@@ -230,3 +247,20 @@ def get_transit(Ti, Te, time, flux, flux_err):
     
     return time[cond], flux[cond], flux_err[cond] 
 #=====================================================================================================================
+def get_epochs(Ti, Te, N, time, flux, flux_err):
+    '''
+    Get minimum value of a selected transit as t0.
+    Ti, Te: transit windows
+    N: Transit epoch (integer)
+    '''
+    
+    #get epochs
+    epochs = []
+    for i in N:
+
+        t, f, ferr = get_transit(Ti[i], Te[i], time, flux, flux_err)
+        epochs.append(t[f == f.min()])
+
+    epochs = np.array(epochs).flatten()
+    
+    return epochs
