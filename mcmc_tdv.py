@@ -4,32 +4,34 @@ from pythonFunctions import *
 def log_prior(theta, epochs):
     # Uninformative uniform prior 
     # The parameters are stored as a vector of values, so unpack them
-    t0s, per, rp, a, inc = theta[:-4], *theta[-4:]
-    dt0 = 0.1
-    if a < 3. or a>4.5 or rp < 0.035 or rp > .05:
-        return -np.inf
-    # inclination should be less than 90
-    if inc > 70. or inc < 75.:
-        return -np.inf
+    t0s, a = theta[:len(epochs)], theta[len(epochs):]
+    dt0 = 1.
+    t0_probs = [] #store priors on all t0s
+    a_probs = []
     for i, t0 in enumerate(t0s):
-        if t0 < epochs[i] - dt0 or t0 > epochs[i] + dt0:
-            return -np.inf
-    # A Gaussian prior on the orbital period
-    period_mu = 0.792#2.3
-    period_sigma = 1e-1
-    period_prob = 1 / period_sigma / (2 * np.pi) ** 0.5 * np.exp(-0.5 * ((per - period_mu) / (period_sigma)) ** 2)
-    return np.log(period_prob)
+        #gaussian prior on t0s
+        t0_mu = epochs[i]
+        t0_sigma = 1e-3
+        t0_prob = 1 / t0_sigma / (2 * np.pi) ** 0.5 * np.exp(-0.5 * ((t0 - t0_mu) / (t0_sigma)) ** 2)
+        t0_probs.append(t0_prob)
+        #if t0 < epochs[i] - dt0 or t0 > epochs[i] + dt0:
+            #return -np.inf
+    # A Gaussian prior on the a/rs
+    for i, a_ in enumerate(a):
+        a_mu = 22.340000193#a[i]#3.877#2.3
+        a_sigma = 1e-3
+        a_prob = 1 / a_sigma / (2 * np.pi) ** 0.5 * np.exp(-0.5 * ((a_ - a_mu) / (a_sigma)) ** 2)
+        a_probs.append(a_prob)
+    return np.sum(np.log(t0_probs)) + np.sum(np.log(a_probs)) 
 
 def lc_model(theta, x):
     '''
     Model = transit1(t0_0, *pars) + transit2(t0_1, *pars) + .... 
     x: time domain
     '''
-    t0, per, rp, a, inc = theta[:-4], *theta[-4:]
-    #get each transits epoch within window of +- per/2
-    #x_model = [x[(x >= t0[i] - per/2) & (x <= t0[i] + per/2)] for i in range(len(t0))]
+    t0, a = theta[:int(len(theta)/2)], theta[int(len(theta)/2):]
     #Each transit time with same other parameters but t0 create model = LC1 + LC2 + ...
-    model = np.concatenate([list(f_batman(x[i], t0[j], *theta[-4:])) for j,i in enumerate(x.keys())]) #pars contains t0 to create fake data
+    model = np.concatenate([list(f_batman(x[i], t0[j], a[j])) for j,i in enumerate(x.keys())]) #pars contains t0 to create fake data
     
     return model
 
