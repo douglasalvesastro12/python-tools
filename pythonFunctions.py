@@ -44,7 +44,7 @@ def phase_fold(epoch, period, time):
     
     return phase
 #==========================================================================================
-def f_batman(x, t0,per,rp,a,inc,baseline=0.0, ecc=0.1,w=90, u = [0.34, 0.28] ,limb_dark ="quadratic"):
+def f_batman(x, t0, a, per=3.690621, rp=0.0396, inc=89.3, baseline=0.0, ecc=0.0,w=90, u = [0.45, 0.45] ,limb_dark ="quadratic"):
     """
     Function for computing transit models for the set of 8 free paramters
     x - time array
@@ -85,7 +85,7 @@ def linear_ephemerides(T0, T0err, P, Perr, Tdur, Tdurerr, dt, time):
     Ti = T0 + N*P - (N*Perr + T0err + 0.5 * Tdur + Tdurerr) - dt #Ti = Beginning of window
     Te = T0 + N*P + (N*Perr + T0err + 0.5 * Tdur + Tdurerr) + dt #Te (late) = End of transit window
     
-    return (Ti, Te)
+    return (Ti, Te, T0)
 #====================================================================================================
 def transit_difference(T0, T0err, T0ref, T0ref_err, P=0.7920520, Perr=0.0000093):
     '''Computes Difference between two T0 central transits. Negative values mean T0ref is ahead (larger) of T0'''
@@ -114,7 +114,7 @@ def select_full_transits(Ti, Te, P, npoints, Ntransits, random_transits, *data, 
     data: t, f, ferr 
     '''
     time, flux, flux_err = data
-    N = np.arange( int((time.max() - time.min())/P)  + 1) #total possible N values
+    N = np.arange( int((time.max() - time.min())/P)) #total possible N values
     t, f, ferr = {}, {}, {} #transits is stored here
     N_counts = [] 
     iterations = 0
@@ -147,7 +147,6 @@ def select_full_transits(Ti, Te, P, npoints, Ntransits, random_transits, *data, 
                         f[f'transit {Nrand}'] = flux[cond]
                         ferr[f'transit {Nrand}'] = flux_err[cond]
                         Nrand = np.random.choice(N)
-
                 else:# If 
                     Nrand = np.random.choice(N)
                     iterations +=1
@@ -179,7 +178,7 @@ def select_full_transits(Ti, Te, P, npoints, Ntransits, random_transits, *data, 
         for j,k,z in zip(t[f'{i}'], f[f'{i}'],ferr[f'{i}']):
             transits_t.append(j), transits_f.append(k), transits_ferr.append(z)
             
-    N_ = (N_counts if random_transits else N)
+    N_ = (np.array(N_counts) if random_transits else N)
     if plot:
         fig, ax = plt.subplots(len(N_),1, figsize = (6,len(N_)*2))
         for idx, ind in enumerate(N_): #do look in N_counts or N depending on random_transit value
@@ -194,9 +193,10 @@ def select_full_transits(Ti, Te, P, npoints, Ntransits, random_transits, *data, 
         else:
             ax.set_xlabel('t0 [days]')
         plt.tight_layout()
-        
-
-    return np.array(transits_t),np.array(transits_f),np.array(transits_ferr), N_
+#Return transits in a single dataset array
+#    return np.array(transits_t),np.array(transits_f),np.array(transits_ferr), N_
+#return dictionary with individual transits separated
+    return t, f, ferr, N_
 #===================================================================================================================================
 def draw_lc(time,cadence, sigma, pars, plot=True):
     '''
@@ -230,7 +230,7 @@ def transit_dur(per,rp,a,inc):
     '''
     
     b = a * np.cos(inc * np.pi/180)
-    tdur = (per/np.pi) * np.arcsin( np.sqrt( (1 + rp)**2 - b**2) / a )
+    tdur = (per/np.pi) * np.arcsin( np.sqrt( (1 + rp)**2 - b**2) / a ) #for e=0
     
     #IMPLEMENT ERROR PROPAGATION HERE
     #https://physics.stackexchange.com/questions/503748/error-propagation-in-sine
@@ -240,7 +240,7 @@ def transit_dur(per,rp,a,inc):
 #=====================================================================================================================
 def get_transit(Ti, Te, time, flux, flux_err):
     '''
-    Pick individual transits from data within windown Ti (time of ingress) and Te (time of egress)
+    Pick individual transits from data within windown Ti (time of ingress) and Te (time of egress).
     '''
     
     cond = (time > Ti) & (time < Te)
@@ -259,7 +259,7 @@ def get_epochs(Ti, Te, N, time, flux, flux_err):
     for i in N:
 
         t, f, ferr = get_transit(Ti[i], Te[i], time, flux, flux_err)
-        epochs.append(t[f == f.min()])
+        epochs.append( t[f == f.min()][0] )
 
     epochs = np.array(epochs).flatten()
     
